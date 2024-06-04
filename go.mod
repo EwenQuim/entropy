@@ -1,4 +1,4 @@
-module entropy
+module github.com/EwenQuim/entropy
 
 go 1.22.3
 
