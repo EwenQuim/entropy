@@ -1,0 +1,5 @@
+# repositories entropy is tested against
+kubernetes
+git
+cli
+etcd
