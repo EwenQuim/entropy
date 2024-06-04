@@ -36,22 +36,29 @@ type Entropy struct {
 
 // Entropies should be created with a size n using make()
 // it should not be written to manually, instead use Entropies.Add
-type Entropies []Entropy
+type Entropies struct {
+	sync.Mutex
+	Entropies []Entropy
+}
 
 // Add assumes that es contains an ordered set of entropies.
 // It preserves ordering, and inserts an additional value e, if it has high enough entropy.
 // In that case, the entry with lowest entropy is rejected.
-func (es Entropies) Add(e Entropy) {
-	if es[len(es)-1].Entropy >= e.Entropy {
+func (es *Entropies) Add(e Entropy) {
+	es.Lock()
+	defer es.Unlock()
+
+	entropies := es.Entropies
+	if entropies[len(entropies)-1].Entropy >= e.Entropy {
 		return
 	}
 
-	for i := range len(es) {
-		if es[i].Entropy < e.Entropy {
-			for j := len(es) - 1; j > i; j-- {
-				es[j] = es[j-1]
+	for i := range len(entropies) {
+		if entropies[i].Entropy < e.Entropy {
+			for j := len(entropies) - 1; j > i; j-- {
+				entropies[j] = entropies[j-1]
 			}
-			es[i] = e
+			entropies[i] = e
 			return
 		}
 	}
@@ -86,7 +93,9 @@ func main() {
 		fmt.Println("No files provided, defaults to current folder.")
 		fileNames = []string{"."}
 	}
-	entropies := make(Entropies, *resultCountFlag)
+	entropies := &Entropies{
+		Entropies: make([]Entropy, resultCount),
+	}
 	for _, fileName := range fileNames {
 		err := readFile(entropies, fileName)
 		if err != nil {
@@ -102,7 +111,7 @@ func main() {
 		resetMark = ""
 	}
 
-	for _, entropy := range entropies {
+	for _, entropy := range entropies.Entropies {
 		if entropy == (Entropy{}) {
 			return
 		}
@@ -110,7 +119,7 @@ func main() {
 	}
 }
 
-func readFile(entropies Entropies, fileName string) error {
+func readFile(entropies *Entropies, fileName string) error {
 	// If file is a folder, walk inside the folder
 	fileInfo, err := os.Stat(fileName)
 	if err != nil {
