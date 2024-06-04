@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"slices"
 	"strings"
 	"sync"
 
@@ -33,6 +32,29 @@ type Entropy struct {
 	File    string  // File where the line is found
 	LineNum int     // Line number in the file
 	Line    string  // Line with high entropy
+}
+
+// Entropies should be created with a size n using make()
+// it should not be written to manually, instead use Entropies.Add
+type Entropies []Entropy
+
+// Add assumes that es contains an ordered set of entropies.
+// It preserves ordering, and inserts an additional value e, if it has high enough entropy.
+// In that case, the entry with lowest entropy is rejected.
+func (es Entropies) Add(e Entropy) {
+	if es[len(es)-1].Entropy >= e.Entropy {
+		return
+	}
+
+	for i := range len(es) {
+		if es[i].Entropy < e.Entropy {
+			for j := len(es) - 1; j > i; j-- {
+				es[j] = es[j-1]
+			}
+			es[i] = e
+			return
+		}
+	}
 }
 
 func main() {
@@ -64,16 +86,13 @@ func main() {
 		fmt.Println("No files provided, defaults to current folder.")
 		fileNames = []string{"."}
 	}
-	entropies := make([]Entropy, 0, 10*len(fileNames))
+	entropies := make(Entropies, *resultCountFlag)
 	for _, fileName := range fileNames {
-		fileEntropies, err := readFile(fileName)
+		err := readFile(entropies, fileName)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading file %s: %v\n", fileName, err)
 		}
-		entropies = append(entropies, fileEntropies...)
 	}
-
-	entropies = sortAndCutTop(entropies)
 
 	redMark := "\033[31m"
 	resetMark := "\033[0m"
@@ -84,58 +103,53 @@ func main() {
 	}
 
 	for _, entropy := range entropies {
+		if entropy == (Entropy{}) {
+			return
+		}
 		fmt.Printf("%.2f: %s%s:%d%s %s\n", entropy.Entropy, redMark, entropy.File, entropy.LineNum, resetMark, entropy.Line)
 	}
 }
 
-func readFile(fileName string) ([]Entropy, error) {
+func readFile(entropies Entropies, fileName string) error {
 	// If file is a folder, walk inside the folder
 	fileInfo, err := os.Stat(fileName)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	if isFileHidden(fileInfo.Name()) && !exploreHidden {
-		return nil, nil
+		return nil
 	}
 
-	entropies := make([]Entropy, 0, 10)
 	if fileInfo.IsDir() {
 		// Walk through the folder and read all files
 		dir, err := os.ReadDir(fileName)
 		if err != nil {
-			return nil, err
+			return err
 		}
-
-		entropiies := make([][]Entropy, len(dir))
 
 		var wg sync.WaitGroup
 		for i, file := range dir {
 			wg.Add(1)
 			go func(i int, file os.DirEntry) {
 				defer wg.Done()
-				fileEntropies, err := readFile(fileName + "/" + file.Name())
+				err := readFile(entropies, fileName+"/"+file.Name())
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Error reading file %s: %v\n", file.Name(), err)
 				}
-				entropiies[i] = fileEntropies
 			}(i, file)
 		}
 
 		wg.Wait()
-
-		for _, fileEntropies := range entropiies {
-			entropies = append(entropies, fileEntropies...)
-		}
 	}
 
 	if !isFileIncluded(fileInfo.Name()) {
-		return sortAndCutTop(entropies), nil
+		return nil
 	}
 
 	file, err := os.Open(fileName)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer file.Close()
 
@@ -150,7 +164,7 @@ func readFile(fileName string) ([]Entropy, error) {
 				continue
 			}
 
-			entropies = append(entropies, Entropy{
+			entropies.Add(Entropy{
 				Entropy: entropy(field),
 				File:    fileName,
 				LineNum: i,
@@ -159,7 +173,7 @@ func readFile(fileName string) ([]Entropy, error) {
 		}
 	}
 
-	return sortAndCutTop(entropies), nil
+	return nil
 }
 
 func entropy(text string) float64 {
@@ -209,16 +223,4 @@ func isFileIncluded(filename string) bool {
 	}
 
 	return false
-}
-
-func sortAndCutTop(entropies []Entropy) []Entropy {
-	slices.SortFunc(entropies, func(a, b Entropy) int {
-		return int((b.Entropy - a.Entropy) * 10000)
-	})
-
-	if len(entropies) > resultCount {
-		return entropies[:resultCount]
-	}
-
-	return entropies
 }
