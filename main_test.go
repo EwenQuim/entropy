@@ -3,8 +3,9 @@ package main
 import "testing"
 
 func BenchmarkFile(b *testing.B) {
+	entropies := make(Entropies, 10)
 	for range b.N {
-		readFile("testdata")
+		_ = readFile(entropies, "testdata")
 	}
 }
 
@@ -44,73 +45,27 @@ func TestEntropy(t *testing.T) {
 
 func TestReadFile(t *testing.T) {
 	t.Run("random.js", func(t *testing.T) {
-		res, err := readFile("testdata/random.js")
+		res := make(Entropies, 10)
+		err := readFile(res, "testdata/random.js")
 		if err != nil {
 			t.Errorf("expected nil, got %v", err)
 		}
 
-		Expect(t, len(res), 10)
 		ExpectFloat(t, res[0].Entropy, 5.53614242151549)
 		Expect(t, res[0].LineNum, 7) // The token is hidden here
 		ExpectFloat(t, res[4].Entropy, 3.321928094887362)
 	})
 
 	t.Run("testdata/folder", func(t *testing.T) {
-		res, err := readFile("testdata/folder")
+		res := make(Entropies, 10)
+		err := readFile(res, "testdata/folder")
 		if err != nil {
 			t.Errorf("expected nil, got %v", err)
 		}
 
-		Expect(t, len(res), 10)
 		ExpectFloat(t, res[0].Entropy, 3.7667029194153567)
 		Expect(t, res[0].LineNum, 7) // The token is hidden here
 		ExpectFloat(t, res[6].Entropy, 2.8553885422075336)
-	})
-}
-
-func TestSortAndCutTop(t *testing.T) {
-	resultCount = 5
-
-	t.Run("nil", func(t *testing.T) {
-		res := sortAndCutTop(nil)
-		if len(res) != 0 {
-			t.Errorf("expected 0, got %d", len(res))
-		}
-	})
-
-	t.Run("empty", func(t *testing.T) {
-		res := sortAndCutTop([]Entropy{})
-		if len(res) != 0 {
-			t.Errorf("expected 0, got %d", len(res))
-		}
-	})
-
-	t.Run("less than resultCount", func(t *testing.T) {
-		res := sortAndCutTop([]Entropy{
-			{Entropy: 0.1},
-			{Entropy: 0.6},
-			{Entropy: 0.3},
-		})
-
-		Expect(t, len(res), 3)
-		Expect(t, res[0].Entropy, 0.6)
-		Expect(t, res[2].Entropy, 0.1)
-	})
-
-	t.Run("more than resultCount", func(t *testing.T) {
-		res := sortAndCutTop([]Entropy{
-			{Entropy: 0.1},
-			{Entropy: 0.6},
-			{Entropy: 0.3},
-			{Entropy: 0.7},
-			{Entropy: 0.4},
-			{Entropy: 0.5},
-			{Entropy: 0.2},
-		})
-
-		Expect(t, len(res), 5)
-		Expect(t, res[0].Entropy, 0.7)
-		Expect(t, res[4].Entropy, 0.3)
 	})
 }
 
@@ -151,6 +106,19 @@ func TestIsFileHidden(t *testing.T) {
 	Expect(t, isFileHidden("./.git"), true)
 	Expect(t, isFileHidden(".git"), true)
 	Expect(t, isFileHidden(".env"), true)
+}
+
+func TestEntropies(t *testing.T) {
+	entropies := make(Entropies, 5)
+	for _, i := range []float64{1, 3, 5, 7, 2, 4, 6, 8} {
+		entropies.Add(Entropy{Entropy: i})
+	}
+
+	Expect(t, entropies[0].Entropy, 8)
+	Expect(t, entropies[1].Entropy, 7)
+	Expect(t, entropies[2].Entropy, 6)
+	Expect(t, entropies[3].Entropy, 5)
+	Expect(t, entropies[4].Entropy, 4)
 }
 
 func Expect[T comparable](t *testing.T, got, expected T) {
