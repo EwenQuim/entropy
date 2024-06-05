@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 
@@ -48,20 +49,22 @@ func (es *Entropies) Add(e Entropy) {
 	es.Lock()
 	defer es.Unlock()
 
-	entropies := es.Entropies
-	if entropies[len(entropies)-1].Entropy >= e.Entropy {
+	if es.Entropies[len(es.Entropies)-1].Entropy >= e.Entropy {
 		return
 	}
 
-	for i := range len(entropies) {
-		if entropies[i].Entropy < e.Entropy {
-			for j := len(entropies) - 1; j > i; j-- {
-				entropies[j] = entropies[j-1]
-			}
-			entropies[i] = e
-			return
+	i, _ := slices.BinarySearchFunc(es.Entropies, e, func(a, b Entropy) int {
+		if b.Entropy > a.Entropy {
+			return 1
 		}
-	}
+		if a.Entropy > b.Entropy {
+			return -1
+		}
+		return 0
+	})
+
+	copy(es.Entropies[i+1:], es.Entropies[i:])
+	es.Entropies[i] = e
 }
 
 func main() {
