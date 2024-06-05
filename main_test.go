@@ -1,6 +1,8 @@
 package main
 
-import "testing"
+import (
+	"testing"
+)
 
 func BenchmarkFile(b *testing.B) {
 	for range b.N {
@@ -65,6 +67,15 @@ func TestReadFile(t *testing.T) {
 		ExpectFloat(t, res[0].Entropy, 3.7667029194153567)
 		Expect(t, res[0].LineNum, 7) // The token is hidden here
 		ExpectFloat(t, res[6].Entropy, 2.8553885422075336)
+	})
+
+	t.Run("dangling symlink in testdata folder", func(t *testing.T) {
+		res, err := readFile("testdata")
+		if err != nil {
+			t.Errorf("expected nil, got %v", err)
+		}
+
+		Expect(t, len(res), 10)
 	})
 }
 

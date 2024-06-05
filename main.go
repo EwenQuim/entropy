@@ -68,8 +68,7 @@ func main() {
 	for _, fileName := range fileNames {
 		fileEntropies, err := readFile(fileName)
 		if err != nil {
-			fmt.Println(err)
-			return
+			fmt.Fprintf(os.Stderr, "Error reading file %s: %v\n", fileName, err)
 		}
 		entropies = append(entropies, fileEntropies...)
 	}
@@ -117,7 +116,7 @@ func readFile(fileName string) ([]Entropy, error) {
 				defer wg.Done()
 				fileEntropies, err := readFile(fileName + "/" + file.Name())
 				if err != nil {
-					panic(err)
+					fmt.Fprintf(os.Stderr, "Error reading file %s: %v\n", file.Name(), err)
 				}
 				entropiies[i] = fileEntropies
 			}(i, file)
