@@ -163,14 +163,18 @@ func readFile(fileName string) ([]Entropy, error) {
 }
 
 func entropy(text string) float64 {
-	uniqueCharacters := make(map[rune]struct{}, len(text))
+	uniqueCharacters := make(map[rune]int64, len(text))
 	for _, r := range text {
-		uniqueCharacters[r] = struct{}{}
+		if _, ok := uniqueCharacters[r]; ok {
+			uniqueCharacters[r]++
+		} else {
+			uniqueCharacters[r] = 1
+		}
 	}
 
 	entropy := 0.0
 	for character := range uniqueCharacters {
-		res := float64(strings.Count(text, string(character))) / float64(len(text))
+		res := float64(uniqueCharacters[character]) / float64(len(text))
 		if res == 0 {
 			continue
 		}
