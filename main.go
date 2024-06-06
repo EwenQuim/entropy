@@ -165,11 +165,7 @@ func readFile(fileName string) ([]Entropy, error) {
 func entropy(text string) float64 {
 	uniqueCharacters := make(map[rune]int64, len(text))
 	for _, r := range text {
-		if _, ok := uniqueCharacters[r]; ok {
-			uniqueCharacters[r]++
-		} else {
-			uniqueCharacters[r] = 1
-		}
+		uniqueCharacters[r]++
 	}
 
 	entropy := 0.0
