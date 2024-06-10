@@ -4,9 +4,12 @@ ARG TARGETARCH
 
 WORKDIR /go/src
 
-COPY . .
+COPY go.mod go.sum .
 
 RUN go mod download
+
+COPY . .
+
 RUN mkdir /data
 
 RUN GOOS=linux GOARCH=${TARGETARCH} go build -ldflags "-s -w" -o entropy .
