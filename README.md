@@ -31,7 +31,15 @@ go run github.com/EwenQuim/entropy@latest
 
 ### With brew
 
-WIP
+```bash
+brew install ewenquim/repo/entropy
+entropy
+
+# More options
+entropy -h
+entropy -top 20 -ext go,py,js
+entropy -top 5 -ignore-ext min.js,_test.go,pdf,png,jpg my-folder my-file1 my-file2
+```
 
 ### With docker
 

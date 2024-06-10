@@ -1,5 +1,7 @@
 FROM golang:1.22 as builder
 
+ARG TARGETARCH
+
 WORKDIR /go/src
 
 COPY . .
@@ -7,7 +9,7 @@ COPY . .
 RUN go mod download
 RUN mkdir /data
 
-RUN go build -ldflags "-s -w" -o entropy .
+RUN GOOS=linux GOARCH=${TARGETARCH} go build -ldflags "-s -w" -o entropy .
 
 # Path: Dockerfile
 FROM scratch
