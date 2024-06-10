@@ -1,6 +1,8 @@
 package main
 
-import "testing"
+import (
+	"testing"
+)
 
 func BenchmarkFile(b *testing.B) {
 	entropies := &Entropies{Entropies: make([]Entropy, 10)}
@@ -63,9 +65,20 @@ func TestReadFile(t *testing.T) {
 			t.Errorf("expected nil, got %v", err)
 		}
 
+		Expect(t, len(res.Entropies), 10)
 		ExpectFloat(t, res.Entropies[0].Entropy, 3.7667029194153567)
 		Expect(t, res.Entropies[0].LineNum, 7) // The token is hidden here
 		ExpectFloat(t, res.Entropies[6].Entropy, 2.8553885422075336)
+	})
+
+	t.Run("dangling symlink in testdata folder", func(t *testing.T) {
+		res := &Entropies{Entropies: make([]Entropy, 10)}
+		err := readFile(res, "testdata")
+		if err != nil {
+			t.Errorf("expected nil, got %v", err)
+		}
+
+		Expect(t, len(res.Entropies), 10)
 	})
 }
 

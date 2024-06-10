@@ -102,8 +102,7 @@ func main() {
 	for _, fileName := range fileNames {
 		err := readFile(entropies, fileName)
 		if err != nil {
-			fmt.Println(err)
-			return
+			fmt.Fprintf(os.Stderr, "Error reading file %s: %v\n", fileName, err)
 		}
 	}
 
@@ -148,7 +147,7 @@ func readFile(entropies *Entropies, fileName string) error {
 				defer wg.Done()
 				err := readFile(entropies, fileName+"/"+file.Name())
 				if err != nil {
-					panic(err)
+					fmt.Fprintf(os.Stderr, "Error reading file %s: %v\n", file.Name(), err)
 				}
 			}(i, file)
 		}
@@ -190,14 +189,14 @@ func readFile(entropies *Entropies, fileName string) error {
 }
 
 func entropy(text string) float64 {
-	uniqueCharacters := make(map[rune]struct{}, len(text))
+	uniqueCharacters := make(map[rune]int64, len(text))
 	for _, r := range text {
-		uniqueCharacters[r] = struct{}{}
+		uniqueCharacters[r]++
 	}
 
 	entropy := 0.0
 	for character := range uniqueCharacters {
-		res := float64(strings.Count(text, string(character))) / float64(len(text))
+		res := float64(uniqueCharacters[character]) / float64(len(text))
 		if res == 0 {
 			continue
 		}
