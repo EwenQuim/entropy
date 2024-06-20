@@ -35,6 +35,12 @@ type Entropy struct {
 	Line    string  // Line with high entropy
 }
 
+func NewEntropies(n int) *Entropies {
+	return &Entropies{
+		Entropies: make([]Entropy, n),
+	}
+}
+
 // Entropies should be created with a size n using make()
 // it should not be written to manually, instead use Entropies.Add
 type Entropies struct {
@@ -96,9 +102,7 @@ func main() {
 		fmt.Println("No files provided, defaults to current folder.")
 		fileNames = []string{"."}
 	}
-	entropies := &Entropies{
-		Entropies: make([]Entropy, resultCount),
-	}
+	entropies := NewEntropies(resultCount)
 	for _, fileName := range fileNames {
 		err := readFile(entropies, fileName)
 		if err != nil {

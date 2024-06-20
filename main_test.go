@@ -71,12 +71,13 @@ func TestReadFile(t *testing.T) {
 	})
 
 	t.Run("dangling symlink in testdata folder", func(t *testing.T) {
-		res, err := readFile("testdata")
+		entropies := NewEntropies(10)
+		err := readFile(entropies, "testdata")
 		if err != nil {
 			t.Errorf("expected nil, got %v", err)
 		}
 
-		Expect(t, len(res), 10)
+		Expect(t, len(entropies.Entropies), 10)
 	})
 }
 
