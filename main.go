@@ -38,7 +38,7 @@ type Entropy struct {
 // Entropies should be created with a size n using make()
 // it should not be written to manually, instead use Entropies.Add
 type Entropies struct {
-	sync.Mutex
+	mu        sync.Mutex
 	Entropies []Entropy
 }
 
@@ -46,8 +46,8 @@ type Entropies struct {
 // It preserves ordering, and inserts an additional value e, if it has high enough entropy.
 // In that case, the entry with lowest entropy is rejected.
 func (es *Entropies) Add(e Entropy) {
-	es.Lock()
-	defer es.Unlock()
+	es.mu.Lock()
+	defer es.mu.Unlock()
 
 	if es.Entropies[len(es.Entropies)-1].Entropy >= e.Entropy {
 		return
