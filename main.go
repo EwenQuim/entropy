@@ -35,6 +35,44 @@ type Entropy struct {
 	Line    string  // Line with high entropy
 }
 
+func NewEntropies(n int) *Entropies {
+	return &Entropies{
+		Entropies: make([]Entropy, n),
+	}
+}
+
+// Entropies should be created with a size n using make()
+// it should not be written to manually, instead use Entropies.Add
+type Entropies struct {
+	mu        sync.Mutex
+	Entropies []Entropy
+}
+
+// Add assumes that es contains an ordered set of entropies.
+// It preserves ordering, and inserts an additional value e, if it has high enough entropy.
+// In that case, the entry with lowest entropy is rejected.
+func (es *Entropies) Add(e Entropy) {
+	es.mu.Lock()
+	defer es.mu.Unlock()
+
+	if es.Entropies[len(es.Entropies)-1].Entropy >= e.Entropy {
+		return
+	}
+
+	i, _ := slices.BinarySearchFunc(es.Entropies, e, func(a, b Entropy) int {
+		if b.Entropy > a.Entropy {
+			return 1
+		}
+		if a.Entropy > b.Entropy {
+			return -1
+		}
+		return 0
+	})
+
+	copy(es.Entropies[i+1:], es.Entropies[i:])
+	es.Entropies[i] = e
+}
+
 func main() {
 	minCharactersFlag := flag.Int("min", minCharactersDefault, "Minimum number of characters in the line to consider computing entropy")
 	resultCountFlag := flag.Int("top", resultCountDefault, "Number of results to display")
@@ -64,16 +102,13 @@ func main() {
 		fmt.Println("No files provided, defaults to current folder.")
 		fileNames = []string{"."}
 	}
-	entropies := make([]Entropy, 0, 10*len(fileNames))
+	entropies := NewEntropies(resultCount)
 	for _, fileName := range fileNames {
-		fileEntropies, err := readFile(fileName)
+		err := readFile(entropies, fileName)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading file %s: %v\n", fileName, err)
 		}
-		entropies = append(entropies, fileEntropies...)
 	}
-
-	entropies = sortAndCutTop(entropies)
 
 	redMark := "\033[31m"
 	resetMark := "\033[0m"
@@ -83,59 +118,54 @@ func main() {
 		resetMark = ""
 	}
 
-	for _, entropy := range entropies {
+	for _, entropy := range entropies.Entropies {
+		if entropy == (Entropy{}) {
+			return
+		}
 		fmt.Printf("%.2f: %s%s:%d%s %s\n", entropy.Entropy, redMark, entropy.File, entropy.LineNum, resetMark, entropy.Line)
 	}
 }
 
-func readFile(fileName string) ([]Entropy, error) {
+func readFile(entropies *Entropies, fileName string) error {
 	// If file is a folder, walk inside the folder
 	fileInfo, err := os.Stat(fileName)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	if isFileHidden(fileInfo.Name()) && !exploreHidden {
-		return nil, nil
+		return nil
 	}
 
-	entropies := make([]Entropy, 0, 10)
 	if fileInfo.IsDir() {
 		// Walk through the folder and read all files
 		dir, err := os.ReadDir(fileName)
 		if err != nil {
-			return nil, err
+			return err
 		}
-
-		entropiies := make([][]Entropy, len(dir))
 
 		var wg sync.WaitGroup
 		for i, file := range dir {
 			wg.Add(1)
 			go func(i int, file os.DirEntry) {
 				defer wg.Done()
-				fileEntropies, err := readFile(fileName + "/" + file.Name())
+				err := readFile(entropies, fileName+"/"+file.Name())
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Error reading file %s: %v\n", file.Name(), err)
 				}
-				entropiies[i] = fileEntropies
 			}(i, file)
 		}
 
 		wg.Wait()
-
-		for _, fileEntropies := range entropiies {
-			entropies = append(entropies, fileEntropies...)
-		}
 	}
 
 	if !isFileIncluded(fileInfo.Name()) {
-		return sortAndCutTop(entropies), nil
+		return nil
 	}
 
 	file, err := os.Open(fileName)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer file.Close()
 
@@ -150,7 +180,7 @@ func readFile(fileName string) ([]Entropy, error) {
 				continue
 			}
 
-			entropies = append(entropies, Entropy{
+			entropies.Add(Entropy{
 				Entropy: entropy(field),
 				File:    fileName,
 				LineNum: i,
@@ -159,7 +189,7 @@ func readFile(fileName string) ([]Entropy, error) {
 		}
 	}
 
-	return sortAndCutTop(entropies), nil
+	return nil
 }
 
 func entropy(text string) float64 {
@@ -209,16 +239,4 @@ func isFileIncluded(filename string) bool {
 	}
 
 	return false
-}
-
-func sortAndCutTop(entropies []Entropy) []Entropy {
-	slices.SortFunc(entropies, func(a, b Entropy) int {
-		return int((b.Entropy - a.Entropy) * 10000)
-	})
-
-	if len(entropies) > resultCount {
-		return entropies[:resultCount]
-	}
-
-	return entropies
 }
