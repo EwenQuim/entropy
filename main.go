@@ -14,18 +14,20 @@ import (
 )
 
 const (
-	minCharactersDefault      = 5
+	minCharactersDefault      = 8
 	resultCountDefault        = 10
 	exploreHiddenDefault      = false
-	extensionsToIgnoreDefault = "pdf,png,jpg,jpeg,zip,mp4,gif"
+	extensionsToIgnoreDefault = "pdf,png,jpg,jpeg,zip,mp4,gif,ttf,doc,docx,xls,xlsx,ppt,pptx,mp3,wav,avi,mov"
 )
 
+// CLI options. Will be initialized by flags
 var (
-	minCharacters      = minCharactersDefault // Minimum number of characters to consider computing entropy
-	resultCount        = resultCountDefault   // Number of results to display
-	exploreHidden      = exploreHiddenDefault // Ignore hidden files and folders
-	extensions         = []string{}           // List of file extensions to include. Empty string means all files
-	extensionsToIgnore = []string{}           // List of file extensions to ignore. Empty string means all files
+	minCharacters      int      // Minimum number of characters to consider computing entropy
+	resultCount        int      // Number of results to display
+	exploreHidden      bool     // Ignore hidden files and folders
+	extensions         []string // List of file extensions to include. Empty string means all files
+	extensionsToIgnore []string // List of file extensions to ignore. Empty string means all files
+	discrete           bool     // Discrete mode, don't show the line, only the entropy and file
 )
 
 type Entropy struct {
@@ -78,7 +80,9 @@ func main() {
 	resultCountFlag := flag.Int("top", resultCountDefault, "Number of results to display")
 	exploreHiddenFlag := flag.Bool("include-hidden", exploreHiddenDefault, "Search in hidden files and folders (.git, .env...). Slows down the search.")
 	extensionsFlag := flag.String("ext", "", "Search only in files with these extensions. Comma separated list, e.g. -ext go,py,js (default all files)")
-	extensionsToIgnoreFlag := flag.String("ignore-ext", extensionsToIgnoreDefault, "Ignore files with these extensions. Comma separated list, e.g. -ignore-ext pdf,png,jpg")
+	extensionsToIgnoreFlag := flag.String("ignore-ext", "", "Ignore files with these suffixes. Comma separated list, e.g. -ignore-ext min.css,_test.go,pdf,Test.php. Adds ignored extensions to the default ones.")
+	noDefaultExtensionsToIgnore := flag.Bool("ignore-ext-no-defaults", false, "Remove the default ignored extensions (default "+extensionsToIgnoreDefault+")")
+	discreteFlag := flag.Bool("discrete", false, "Only show the entropy and file, not the line containing the possible secret")
 
 	flag.CommandLine.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "%s [flags] file1 file2 file3 ...\n", os.Args[0])
@@ -93,8 +97,15 @@ func main() {
 	minCharacters = *minCharactersFlag
 	resultCount = *resultCountFlag
 	exploreHidden = *exploreHiddenFlag
+	discrete = *discreteFlag
 	extensions = strings.Split(*extensionsFlag, ",")
-	extensionsToIgnore = strings.Split(*extensionsToIgnoreFlag, ",")
+	extensionsToIgnoreString := *extensionsToIgnoreFlag + "," + extensionsToIgnoreDefault
+	if *noDefaultExtensionsToIgnore {
+		extensionsToIgnoreString = *extensionsToIgnoreFlag
+	}
+	extensionsToIgnore = strings.Split(extensionsToIgnoreString, ",")
+	extensions = removeEmptyStrings(extensions)
+	extensionsToIgnore = removeEmptyStrings(extensionsToIgnore)
 
 	// Read file names from cli
 	fileNames := flag.Args()
@@ -122,12 +133,14 @@ func main() {
 		if entropy == (Entropy{}) {
 			return
 		}
+		if discrete {
+			entropy.Line = ""
+		}
 		fmt.Printf("%.2f: %s%s:%d%s %s\n", entropy.Entropy, redMark, entropy.File, entropy.LineNum, resetMark, entropy.Line)
 	}
 }
 
 func readFile(entropies *Entropies, fileName string) error {
-	// If file is a folder, walk inside the folder
 	fileInfo, err := os.Stat(fileName)
 	if err != nil {
 		return err
@@ -137,8 +150,11 @@ func readFile(entropies *Entropies, fileName string) error {
 		return nil
 	}
 
+	if !isFileIncluded(fileInfo.Name()) {
+		return nil
+	}
+
 	if fileInfo.IsDir() {
-		// Walk through the folder and read all files
 		dir, err := os.ReadDir(fileName)
 		if err != nil {
 			return err
@@ -157,10 +173,6 @@ func readFile(entropies *Entropies, fileName string) error {
 		}
 
 		wg.Wait()
-	}
-
-	if !isFileIncluded(fileInfo.Name()) {
-		return nil
 	}
 
 	file, err := os.Open(fileName)
@@ -239,4 +251,15 @@ func isFileIncluded(filename string) bool {
 	}
 
 	return false
+}
+
+func removeEmptyStrings(slice []string) []string {
+	slices.Sort(slice)
+	slice = slices.Compact(slice)
+
+	if len(slice) > 0 && slice[0] == "" {
+		return slice[1:]
+	}
+
+	return slice
 }

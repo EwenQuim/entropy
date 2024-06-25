@@ -1,6 +1,7 @@
 package main
 
 import (
+	"sync"
 	"testing"
 )
 
@@ -116,21 +117,43 @@ func TestIsFileHidden(t *testing.T) {
 	Expect(t, isFileHidden("main.py"), false)
 	Expect(t, isFileHidden("node_modules"), true)
 	Expect(t, isFileHidden("./.git"), true)
+	Expect(t, isFileHidden("src"), false)
+	Expect(t, isFileHidden("./src"), false)
 	Expect(t, isFileHidden(".git"), true)
 	Expect(t, isFileHidden(".env"), true)
 }
 
 func TestEntropies(t *testing.T) {
-	res := &Entropies{Entropies: make([]Entropy, 5)}
-	for _, i := range []float64{1, 3, 5, 7, 2, 4, 6, 8} {
-		res.Add(Entropy{Entropy: i})
-	}
+	t.Run("synchronous", func(t *testing.T) {
+		res := NewEntropies(5)
+		for _, i := range []float64{1, 3, 5, 7, 2, 4, 6, 8} {
+			res.Add(Entropy{Entropy: i})
+		}
 
-	Expect(t, res.Entropies[0].Entropy, 8)
-	Expect(t, res.Entropies[1].Entropy, 7)
-	Expect(t, res.Entropies[2].Entropy, 6)
-	Expect(t, res.Entropies[3].Entropy, 5)
-	Expect(t, res.Entropies[4].Entropy, 4)
+		Expect(t, res.Entropies[0].Entropy, 8)
+		Expect(t, res.Entropies[1].Entropy, 7)
+		Expect(t, res.Entropies[2].Entropy, 6)
+		Expect(t, res.Entropies[3].Entropy, 5)
+		Expect(t, res.Entropies[4].Entropy, 4)
+	})
+
+	t.Run("asynchronous (add from multiple parallel goroutines)", func(t *testing.T) {
+		res := NewEntropies(5)
+		var wg sync.WaitGroup
+		for _, i := range []float64{1, 3, 5, 7, 2, 4, 6, 8} {
+			wg.Add(1)
+			go func(i float64) {
+				res.Add(Entropy{Entropy: i})
+				wg.Done()
+			}(i)
+		}
+		wg.Wait()
+		Expect(t, res.Entropies[0].Entropy, 8)
+		Expect(t, res.Entropies[1].Entropy, 7)
+		Expect(t, res.Entropies[2].Entropy, 6)
+		Expect(t, res.Entropies[3].Entropy, 5)
+		Expect(t, res.Entropies[4].Entropy, 4)
+	})
 }
 
 func Expect[T comparable](t *testing.T, got, expected T) {
@@ -148,4 +171,35 @@ func ExpectFloat(t *testing.T, got, expected float64) {
 	if gotInt != expectedInt {
 		t.Errorf("expected %d, got %d", expectedInt, gotInt)
 	}
+}
+
+func TestRemoveEmptyStrings(t *testing.T) {
+	t.Run("empty", func(t *testing.T) {
+		Expect(t, len(removeEmptyStrings([]string{})), 0)
+	})
+
+	t.Run("single empty string", func(t *testing.T) {
+		Expect(t, len(removeEmptyStrings([]string{""})), 0)
+	})
+
+	t.Run("no empty strings", func(t *testing.T) {
+		Expect(t, len(removeEmptyStrings([]string{"a", "b", "c"})), 3)
+	})
+
+	t.Run("one empty string", func(t *testing.T) {
+		Expect(t, len(removeEmptyStrings([]string{"a", "", "c"})), 2)
+	})
+
+	t.Run("multiple consecutive empty strings", func(t *testing.T) {
+		Expect(t, len(removeEmptyStrings([]string{"a", "", "", "", "c"})), 2)
+	})
+
+	t.Run("multiple non-consecutive empty strings", func(t *testing.T) {
+		Expect(t, len(removeEmptyStrings([]string{"", "a", "", "", "", "c", ""})), 2)
+	})
+
+	t.Run("all empty strings", func(t *testing.T) {
+		Expect(t, len(removeEmptyStrings([]string{"", "", "", ""})), 0)
+	})
+
 }
