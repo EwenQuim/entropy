@@ -6,9 +6,13 @@ import (
 )
 
 func BenchmarkFile(b *testing.B) {
-	entropies := &Entropies{Entropies: make([]Entropy, 10)}
+	entropies := NewEntropies(10)
 	for range b.N {
-		_ = readFile(entropies, "testdata")
+		err := readFile(entropies, "testdata")
+		if err != nil {
+			b.Errorf("expected nil, got %v", err)
+		}
+		b.Logf("Entropies: %v", entropies)
 	}
 }
 

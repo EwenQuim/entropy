@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"golang.org/x/term"
 )
@@ -17,7 +18,7 @@ const (
 	minCharactersDefault      = 8
 	resultCountDefault        = 10
 	exploreHiddenDefault      = false
-	extensionsToIgnoreDefault = "pdf,png,jpg,jpeg,zip,mp4,gif,ttf,doc,docx,xls,xlsx,ppt,pptx,mp3,wav,avi,mov"
+	extensionsToIgnoreDefault = ".pdf,.png,.jpg,.jpeg,.zip,.mp4,.gif,.ttf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.mp3,.wav,.avi,.mov,.ogg,.wasm,.pyc"
 )
 
 // CLI options. Will be initialized by flags
@@ -28,6 +29,7 @@ var (
 	extensions         []string // List of file extensions to include. Empty string means all files
 	extensionsToIgnore []string // List of file extensions to ignore. Empty string means all files
 	discrete           bool     // Discrete mode, don't show the line, only the entropy and file
+	includeBinaryFiles bool     // Include binary files in search.
 )
 
 type Entropy struct {
@@ -40,20 +42,28 @@ type Entropy struct {
 func NewEntropies(n int) *Entropies {
 	return &Entropies{
 		Entropies: make([]Entropy, n),
+		maxLength: n,
 	}
 }
 
-// Entropies should be created with a size n using make()
-// it should not be written to manually, instead use Entropies.Add
+// Entropies should be created with NewEntropies(n).
+// It should not be written to manually, instead use Entropies.Add
 type Entropies struct {
 	mu        sync.Mutex
-	Entropies []Entropy
+	Entropies []Entropy // Ordered list of entropies with highest entropy first, with length fixed at creation
+	maxLength int
 }
 
-// Add assumes that es contains an ordered set of entropies.
+// Add assumes that es contains an ordered list of entropies of length es.maxLength.
 // It preserves ordering, and inserts an additional value e, if it has high enough entropy.
 // In that case, the entry with lowest entropy is rejected.
 func (es *Entropies) Add(e Entropy) {
+	// This condition is to avoid acquiring the lock (slow) if the entropy is not high enough.
+	// Not goroutine safe, but another check is made after acquiring the lock.
+	if es.Entropies[es.maxLength-1].Entropy >= e.Entropy {
+		return
+	}
+
 	es.mu.Lock()
 	defer es.mu.Unlock()
 
@@ -83,6 +93,7 @@ func main() {
 	extensionsToIgnoreFlag := flag.String("ignore-ext", "", "Ignore files with these suffixes. Comma separated list, e.g. -ignore-ext min.css,_test.go,pdf,Test.php. Adds ignored extensions to the default ones.")
 	noDefaultExtensionsToIgnore := flag.Bool("ignore-ext-no-defaults", false, "Remove the default ignored extensions (default "+extensionsToIgnoreDefault+")")
 	discreteFlag := flag.Bool("discrete", false, "Only show the entropy and file, not the line containing the possible secret")
+	binaryFilesFlag := flag.Bool("binary", false, "Include binary files in search. Slows down the search and may not be useful. A file is considered binary if the first line is not valid utf8.")
 
 	flag.CommandLine.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "%s [flags] file1 file2 file3 ...\n", os.Args[0])
@@ -98,6 +109,7 @@ func main() {
 	resultCount = *resultCountFlag
 	exploreHidden = *exploreHiddenFlag
 	discrete = *discreteFlag
+	includeBinaryFiles = *binaryFilesFlag
 	extensions = strings.Split(*extensionsFlag, ",")
 	extensionsToIgnoreString := *extensionsToIgnoreFlag + "," + extensionsToIgnoreDefault
 	if *noDefaultExtensionsToIgnore {
@@ -136,7 +148,7 @@ func main() {
 		if discrete {
 			entropy.Line = ""
 		}
-		fmt.Printf("%.2f: %s%s:%d%s %s\n", entropy.Entropy, redMark, entropy.File, entropy.LineNum, resetMark, entropy.Line)
+		fmt.Printf("%.3f: %s%s:%d%s %s\n", entropy.Entropy, redMark, entropy.File, entropy.LineNum, resetMark, entropy.Line)
 	}
 }
 
@@ -186,6 +198,10 @@ func readFile(entropies *Entropies, fileName string) error {
 	for scanner.Scan() {
 		i++
 		line := strings.TrimSpace(scanner.Text())
+
+		if i == 1 && !includeBinaryFiles && !utf8.ValidString(line) {
+			break
+		}
 
 		for _, field := range strings.Fields(line) {
 			if len(field) < minCharacters {
