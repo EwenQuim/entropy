@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -18,18 +19,19 @@ const (
 	minCharactersDefault      = 8
 	resultCountDefault        = 10
 	exploreHiddenDefault      = false
-	extensionsToIgnoreDefault = ".pdf,.png,.jpg,.jpeg,.zip,.mp4,.gif,.ttf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.mp3,.wav,.avi,.mov,.ogg,.wasm,.pyc"
+	extensionsToIgnoreDefault = ".pyc,yarn.lock,go.mod,go.sum,go.work.sum,package-lock.json,.wasm,.pdf"
 )
 
 // CLI options. Will be initialized by flags
 var (
-	minCharacters      int      // Minimum number of characters to consider computing entropy
-	resultCount        int      // Number of results to display
-	exploreHidden      bool     // Ignore hidden files and folders
-	extensions         []string // List of file extensions to include. Empty string means all files
-	extensionsToIgnore []string // List of file extensions to ignore. Empty string means all files
-	discrete           bool     // Discrete mode, don't show the line, only the entropy and file
-	includeBinaryFiles bool     // Include binary files in search.
+	minCharacters       int      // Minimum number of characters to consider computing entropy
+	resultCount         int      // Number of results to display
+	exploreHidden       bool     // Ignore hidden files and folders
+	extensions          []string // List of file extensions to include. Empty string means all files
+	extensionsToIgnore  []string // List of file extensions to ignore. Empty string means all files
+	discrete            bool     // Discrete mode, don't show the line, only the entropy and file
+	includeBinaryFiles  bool     // Include binary files in search.
+	disableAdvancedMode bool     // Advanced mode : filters more than just entropy
 )
 
 type Entropy struct {
@@ -54,6 +56,8 @@ type Entropies struct {
 	maxLength int
 }
 
+var mediaBase64Regex = regexp.MustCompile(`(audio|video|image|font)\/[-+.\w]+;base64`)
+
 // Add assumes that es contains an ordered list of entropies of length es.maxLength.
 // It preserves ordering, and inserts an additional value e, if it has high enough entropy.
 // In that case, the entry with lowest entropy is rejected.
@@ -62,6 +66,19 @@ func (es *Entropies) Add(e Entropy) {
 	// Not goroutine safe, but another check is made after acquiring the lock.
 	if es.Entropies[es.maxLength-1].Entropy >= e.Entropy {
 		return
+	}
+
+	if !disableAdvancedMode {
+		line := strings.ToLower(e.Line)
+		line = strings.ReplaceAll(line, "'", "")
+		line = strings.ReplaceAll(line, "\"", "")
+		if mediaBase64Regex.MatchString(line) ||
+			strings.HasPrefix(line, "http") ||
+			strings.Contains(line, "abcdefghijklmnopqrstuvwxyz") ||
+			strings.Contains(line, "aabbccddeeffgghhiijjkkllmmnnooppqqrrssttuuvvwwxxyyzz") {
+			return
+		}
+
 	}
 
 	es.mu.Lock()
@@ -93,11 +110,12 @@ func main() {
 	extensionsToIgnoreFlag := flag.String("ignore-ext", "", "Ignore files with these suffixes. Comma separated list, e.g. -ignore-ext min.css,_test.go,pdf,Test.php. Adds ignored extensions to the default ones.")
 	noDefaultExtensionsToIgnore := flag.Bool("ignore-ext-no-defaults", false, "Remove the default ignored extensions (default "+extensionsToIgnoreDefault+")")
 	discreteFlag := flag.Bool("discrete", false, "Only show the entropy and file, not the line containing the possible secret")
-	binaryFilesFlag := flag.Bool("binary", false, "Include binary files in search. Slows down the search and may not be useful. A file is considered binary if the first line is not valid utf8.")
+	binaryFilesFlag := flag.Bool("binaries", false, "Include binary files in search. Slows down the search and creates many false positives. A file is considered binary if the first line is not valid utf8.")
+	disableAdvancedModeFlag := flag.Bool("dumb", false, "Just dumb entropy. Disable filters that removes alphabets, urls, base64 encoded images and other false positives.")
 
 	flag.CommandLine.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "%s [flags] file1 file2 file3 ...\n", os.Args[0])
-		fmt.Fprintf(flag.CommandLine.Output(), "Example: %s -top 10 -ext go,py,js .\n", os.Args[0])
+		fmt.Fprintf(flag.CommandLine.Output(), "Example: %s -top 10 -ext go,py,js,yaml,json .\n", os.Args[0])
 		fmt.Fprintln(flag.CommandLine.Output(), "Finds the highest entropy strings in files. The higher the entropy, the more random the string is. Useful for finding secrets (and alphabets, it seems).")
 		fmt.Fprintln(flag.CommandLine.Output(), "Please support me on GitHub: https://github.com/EwenQuim")
 		flag.PrintDefaults()
@@ -110,6 +128,7 @@ func main() {
 	exploreHidden = *exploreHiddenFlag
 	discrete = *discreteFlag
 	includeBinaryFiles = *binaryFilesFlag
+	disableAdvancedMode = *disableAdvancedModeFlag
 	extensions = strings.Split(*extensionsFlag, ",")
 	extensionsToIgnoreString := *extensionsToIgnoreFlag + "," + extensionsToIgnoreDefault
 	if *noDefaultExtensionsToIgnore {
