@@ -52,7 +52,7 @@ func TestEntropy(t *testing.T) {
 
 func TestReadFile(t *testing.T) {
 	t.Run("random.js", func(t *testing.T) {
-		res := &Entropies{Entropies: make([]Entropy, 10)}
+		res := NewEntropies(10)
 		err := readFile(res, "testdata/random.js")
 		if err != nil {
 			t.Errorf("expected nil, got %v", err)
@@ -64,7 +64,7 @@ func TestReadFile(t *testing.T) {
 	})
 
 	t.Run("testdata/folder", func(t *testing.T) {
-		res := &Entropies{Entropies: make([]Entropy, 10)}
+		res := NewEntropies(10)
 		err := readFile(res, "testdata/folder")
 		if err != nil {
 			t.Errorf("expected nil, got %v", err)
