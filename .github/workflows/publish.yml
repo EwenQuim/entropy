@@ -1,0 +1,19 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  homebrew:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Bump Homebrew formula
+        uses: dawidd6/action-homebrew-bump-formula@v3
+        with:
+          token: ${{secrets.GH_API_TOKEN}}
+          formula: entropy
+          tap: EwenQuim/homebrew-repo
+          user_name: entropy-releaser
+          user_email: entropy-releaser@mail.com
