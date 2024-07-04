@@ -181,10 +181,6 @@ func readFile(entropies *Entropies, fileName string) error {
 		return nil
 	}
 
-	if !isFileIncluded(fileInfo.Name()) {
-		return nil
-	}
-
 	if fileInfo.IsDir() {
 		dir, err := os.ReadDir(fileName)
 		if err != nil {
@@ -204,6 +200,10 @@ func readFile(entropies *Entropies, fileName string) error {
 		}
 
 		wg.Wait()
+	}
+
+	if !isFileIncluded(fileInfo.Name()) {
+		return nil
 	}
 
 	file, err := os.Open(fileName)
