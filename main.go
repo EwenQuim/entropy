@@ -2,9 +2,12 @@ package main
 
 import (
 	"bufio"
+	"encoding/csv"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"math"
+	"strconv"
 	"os"
 	"regexp"
 	"slices"
@@ -34,11 +37,18 @@ var (
 	disableAdvancedMode bool     // Advanced mode : filters more than just entropy
 )
 
+// Output formats
+const (
+	outputFormatText = "text"
+	outputFormatJSON = "json"
+	outputFormatCSV  = "csv"
+)
+
 type Entropy struct {
-	Entropy float64 // Entropy of the line
-	File    string  // File where the line is found
-	LineNum int     // Line number in the file
-	Line    string  // Line with high entropy
+	Entropy  float64 `json:"entropy"`  // Entropy of the line
+	File     string  `json:"file"`     // File where the line is found
+	LineNum  int     `json:"line_num"` // Line number in the file
+	Line     string  `json:"line"`     // Line with high entropy
 }
 
 func NewEntropies(n int) *Entropies {
@@ -112,6 +122,8 @@ func main() {
 	discreteFlag := flag.Bool("discrete", false, "Only show the entropy and file, not the line containing the possible secret")
 	binaryFilesFlag := flag.Bool("binaries", false, "Include binary files in search. Slows down the search and creates many false positives. A file is considered binary if the first line is not valid utf8.")
 	disableAdvancedModeFlag := flag.Bool("dumb", false, "Just dumb entropy. Disable filters that removes alphabets, urls, base64 encoded images and other false positives.")
+	jsonFlag := flag.Bool("json", false, "Output results in JSON format")
+	csvFlag := flag.Bool("csv", false, "Output results in CSV format")
 
 	flag.CommandLine.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "%s [flags] file1 file2 file3 ...\n", os.Args[0])
@@ -138,6 +150,18 @@ func main() {
 	extensions = removeEmptyStrings(extensions)
 	extensionsToIgnore = removeEmptyStrings(extensionsToIgnore)
 
+	if *jsonFlag && *csvFlag {
+		fmt.Fprintln(os.Stderr, "Error: -json and -csv are mutually exclusive")
+		os.Exit(1)
+	}
+	outputFormat := outputFormatText
+	if *jsonFlag {
+		outputFormat = outputFormatJSON
+	}
+	if *csvFlag {
+		outputFormat = outputFormatCSV
+	}
+
 	// Read file names from cli
 	fileNames := flag.Args()
 	if len(fileNames) == 0 {
@@ -152,6 +176,28 @@ func main() {
 		}
 	}
 
+	var results []Entropy
+	for _, e := range entropies.Entropies {
+		if e == (Entropy{}) {
+			continue
+		}
+		if discrete {
+			e.Line = ""
+		}
+		results = append(results, e)
+	}
+
+	switch outputFormat {
+	case outputFormatJSON:
+		outputJSON(results)
+	case outputFormatCSV:
+		outputCSV(results)
+	default:
+		outputText(results)
+	}
+}
+
+func outputText(results []Entropy) {
 	redMark := "\033[31m"
 	resetMark := "\033[0m"
 	if !term.IsTerminal(int(os.Stdout.Fd())) {
@@ -160,14 +206,43 @@ func main() {
 		resetMark = ""
 	}
 
-	for _, entropy := range entropies.Entropies {
-		if entropy == (Entropy{}) {
+	for _, entropy := range results {
+		fmt.Printf("%.3f: %s%s:%d%s %s\n", entropy.Entropy, redMark, entropy.File, entropy.LineNum, resetMark, entropy.Line)
+	}
+}
+
+func outputJSON(results []Entropy) {
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(results); err != nil {
+		fmt.Fprintf(os.Stderr, "Error encoding JSON: %v\n", err)
+	}
+}
+
+func outputCSV(results []Entropy) {
+	writer := csv.NewWriter(os.Stdout)
+	defer func() {
+		writer.Flush()
+		if err := writer.Error(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error flushing CSV: %v\n", err)
+		}
+	}()
+
+	if err := writer.Write([]string{"entropy", "file", "line_num", "line"}); err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing CSV header: %v\n", err)
+		return
+	}
+
+	for _, e := range results {
+		if err := writer.Write([]string{
+			fmt.Sprintf("%.3f", e.Entropy),
+			e.File,
+			strconv.Itoa(e.LineNum),
+			e.Line,
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "Error writing CSV row: %v\n", err)
 			return
 		}
-		if discrete {
-			entropy.Line = ""
-		}
-		fmt.Printf("%.3f: %s%s:%d%s %s\n", entropy.Entropy, redMark, entropy.File, entropy.LineNum, resetMark, entropy.Line)
 	}
 }
 
